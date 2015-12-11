@@ -1,5 +1,4 @@
 package io.spring.cloud.samples.brewery.acceptance.common
-
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient
@@ -14,10 +13,13 @@ import javax.annotation.PostConstruct
 @EnableDiscoveryClient
 class TestConfiguration {
 
-	@Autowired @LoadBalanced RestTemplate restTemplate
+	@Autowired(required = false) @LoadBalanced RestTemplate loadBalanced
 
 	@PostConstruct
 	void customizeRestTemplate() {
-		this.restTemplate.errorHandler = new ExceptionLoggingErrorHandler()
+		if (loadBalanced) {
+			this.loadBalanced.errorHandler = new ExceptionLoggingErrorHandler()
+		}
 	}
+
 }

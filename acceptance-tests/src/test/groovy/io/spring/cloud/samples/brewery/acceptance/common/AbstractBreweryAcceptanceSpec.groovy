@@ -37,13 +37,9 @@ import spock.lang.Specification
 abstract class AbstractBreweryAcceptanceSpec extends Specification {
 
 	public static final String TRACE_ID_HEADER_NAME = 'X-TRACE-ID'
-	public static final Closure<Boolean> WHAT_TO_TEST = { WhatToTest whatToTest ->
-		String whatToTestProp = System.getProperty(WhatToTest.WHAT_TO_TEST)
-		println "What to test system prop equals [$whatToTestProp]"
-		return whatToTestProp == whatToTest.name()
-	}
 
-	@Autowired @LoadBalanced RestTemplate restTemplate
+	PresentingServiceUrlFetcher presentingServiceUrlFetcher = new PresentingServiceUrlFetcher()
+	@Autowired(required = false) @LoadBalanced RestTemplate loadBalanced
 	@Value('${presenting.timeout:30}') Integer timeout
 
 	Runnable beer_has_been_brewed_for_process_id(String processId) {
@@ -81,7 +77,7 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification {
 		HttpHeaders headers = new HttpHeaders()
 		headers.add("PROCESS-ID", processId)
 		headers.add("TEST-COMMUNICATION-TYPE", communicationType.name())
-		URI uri = URI.create("http://presenting/present/order")
+		URI uri = URI.create("${presentingServiceUrlFetcher.presentingServiceUrl()}/present/order")
 		return new RequestEntity<>(allIngredients(), headers, HttpMethod.POST, uri)
 	}
 
@@ -90,7 +86,7 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification {
 				new RetryCallback<ResponseEntity<String>, Exception>() {
 					@Override
 					ResponseEntity<String> doWithRetry(RetryContext retryContext) throws Exception {
-						return restTemplate.exchange(requestEntity, String)
+						return restTemplate().exchange(requestEntity, String)
 					}
 				}
 		)
@@ -101,9 +97,13 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification {
 	}
 
 	ResponseEntity<String> checkStateOfTheProcess(String processId) {
-		URI uri = URI.create("http://presenting/feed/process/$processId")
+		URI uri = URI.create("${presentingServiceUrlFetcher.presentingServiceUrl()}/feed/process/$processId")
 		HttpHeaders headers = new HttpHeaders()
-		return restTemplate.exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
+		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
+	}
+
+	RestTemplate restTemplate() {
+		return loadBalanced ?: new ExceptionLoggingRestTemplate()
 	}
 
 }
