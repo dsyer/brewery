@@ -31,6 +31,8 @@ echo -e "\nTEST_OPTS=$TEST_OPTS"
 echo -e "\nVERSION=$VERSION"
 echo -e "\n\n"
 
+export WHAT_TO_TEST=$WHAT_TO_TEST
+
 # Clone or update the brewery repository
 REPOSRC=https://github.com/spring-cloud-samples/brewery.git
 LOCALREPO=brewery
@@ -53,10 +55,7 @@ cat gradle.properties
 
 # Build and run docker images
 ./gradlew clean build docker --parallel
-docker-compose kill
-docker-compose rm -f
-docker-compose build
-docker-compose up -d
+./dockerCompose-$WHAT_TO_TEST.sh
 
 # Wait for the apps to boot up
 url="http://127.0.0.1"

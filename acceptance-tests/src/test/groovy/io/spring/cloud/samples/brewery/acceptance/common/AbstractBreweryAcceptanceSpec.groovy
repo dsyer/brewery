@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 package io.spring.cloud.samples.brewery.acceptance.common
-
 import groovy.json.JsonSlurper
+import groovy.util.logging.Slf4j
+import io.spring.cloud.samples.brewery.acceptance.common.sleuth.SleuthHashing
+import io.spring.cloud.samples.brewery.acceptance.common.tech.ExceptionLoggingRestTemplate
+import io.spring.cloud.samples.brewery.acceptance.common.tech.ExceptionLoggingRetryTemplate
+import io.spring.cloud.samples.brewery.acceptance.common.tech.ServiceUrlFetcher
+import io.spring.cloud.samples.brewery.acceptance.common.tech.TestConfiguration
 import io.spring.cloud.samples.brewery.acceptance.model.CommunicationType
 import io.spring.cloud.samples.brewery.acceptance.model.IngredientType
 import io.spring.cloud.samples.brewery.acceptance.model.Order
@@ -29,18 +34,26 @@ import org.springframework.http.*
 import org.springframework.retry.RetryCallback
 import org.springframework.retry.RetryContext
 import org.springframework.test.context.ContextConfiguration
+import org.springframework.util.JdkIdGenerator
 import org.springframework.web.client.RestTemplate
 import spock.lang.Specification
 
+
+/**
+ *  TODO: RestT
+ */
 @ContextConfiguration(classes = TestConfiguration, loader = SpringApplicationContextLoader)
 @WebIntegrationTest(randomPort = true)
-abstract class AbstractBreweryAcceptanceSpec extends Specification {
+@Slf4j
+abstract class AbstractBreweryAcceptanceSpec extends Specification implements SleuthHashing {
 
 	public static final String TRACE_ID_HEADER_NAME = 'X-TRACE-ID'
+	public static final String SPAN_ID_HEADER_NAME = 'X-SPAN-ID'
 
-	PresentingServiceUrlFetcher presentingServiceUrlFetcher = new PresentingServiceUrlFetcher()
+	ServiceUrlFetcher serviceUrlFetcher = new ServiceUrlFetcher()
 	@Autowired(required = false) @LoadBalanced RestTemplate loadBalanced
 	@Value('${presenting.timeout:30}') Integer timeout
+	@Value('${LOCAL_URL:http://localhost}') String zipkinQueryUrl
 
 	Runnable beer_has_been_brewed_for_process_id(String processId) {
 		return new Runnable() {
@@ -53,31 +66,61 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification {
 		}
 	}
 
-	Runnable beer_has_been_brewed_for_process_and_trace_id(String processId, String traceId) {
+	Runnable beer_has_been_brewed_for_process_and_trace_id(String processId) {
 		return new Runnable() {
 			@Override
 			void run() {
 				ResponseEntity<String> process = checkStateOfTheProcess(processId)
 				assert process.statusCode == HttpStatus.OK
 				assert stateFromJson(process) == ProcessState.DONE.name()
-				assert trace_id_header(process) == traceId
 			}
 		}
 	}
 
-	String trace_id_header(HttpEntity httpEntity) {
-		return httpEntity.headers.getFirst(TRACE_ID_HEADER_NAME)
+	Runnable entry_for_trace_id_is_present_in_Zipkin(String traceId) {
+		return new Runnable() {
+			@Override
+			void run() {
+				ResponseEntity<String> response = checkStateOfTheTraceId(traceId)
+				assert response.statusCode == HttpStatus.OK
+				assert response.hasBody()
+				assert ['presenting', 'maturing', 'bottling', 'aggregating'].every {
+						response.body.contains(it)
+					}
+			}
+		}
+	}
+
+	ResponseEntity<String> checkStateOfTheProcess(String processId) {
+		URI uri = URI.create("${serviceUrlFetcher.presentingServiceUrl()}/feed/process/$processId")
+		HttpHeaders headers = new HttpHeaders()
+		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
+	}
+
+	ResponseEntity<String> checkStateOfTheTraceId(String traceId) {
+		String hexTraceId = convertToTraceIdZipkinRequest(traceId)
+		URI uri = URI.create("$zipkinQueryUrl:9411/api/v1/trace/$hexTraceId")
+		log.info("Performing a request for trace id [$traceId] and hex version [$hexTraceId]")
+		HttpHeaders headers = new HttpHeaders()
+		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
 	}
 
 	String stateFromJson(ResponseEntity<String> process) {
 		return new JsonSlurper().parseText(process.body).state.toUpperCase()
 	}
 
+	String trace_id_header(HttpEntity httpEntity) {
+		return httpEntity.headers.getFirst(TRACE_ID_HEADER_NAME)
+	}
+
 	RequestEntity an_order_for_all_ingredients_with_process_id(String processId, CommunicationType communicationType) {
 		HttpHeaders headers = new HttpHeaders()
 		headers.add("PROCESS-ID", processId)
+		headers.add(TRACE_ID_HEADER_NAME, processId)
+		headers.add(SPAN_ID_HEADER_NAME, new JdkIdGenerator().generateId().toString())
 		headers.add("TEST-COMMUNICATION-TYPE", communicationType.name())
-		URI uri = URI.create("${presentingServiceUrlFetcher.presentingServiceUrl()}/present/order")
+		URI uri = URI.create("${serviceUrlFetcher.presentingServiceUrl()}/present/order")
+		log.info("Request with order for all ingredients to presenting service for uri [$uri] with headers [$headers] is ready")
 		return new RequestEntity<>(allIngredients(), headers, HttpMethod.POST, uri)
 	}
 
@@ -94,12 +137,6 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification {
 
 	Order allIngredients() {
 		return new Order(items: IngredientType.values())
-	}
-
-	ResponseEntity<String> checkStateOfTheProcess(String processId) {
-		URI uri = URI.create("${presentingServiceUrlFetcher.presentingServiceUrl()}/feed/process/$processId")
-		HttpHeaders headers = new HttpHeaders()
-		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
 	}
 
 	RestTemplate restTemplate() {

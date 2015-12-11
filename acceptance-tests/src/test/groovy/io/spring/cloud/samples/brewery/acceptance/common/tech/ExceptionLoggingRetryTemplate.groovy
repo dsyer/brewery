@@ -1,4 +1,4 @@
-package io.spring.cloud.samples.brewery.acceptance.common
+package io.spring.cloud.samples.brewery.acceptance.common.tech
 
 import groovy.util.logging.Slf4j
 import org.springframework.retry.RetryCallback
@@ -29,7 +29,7 @@ class ExceptionLoggingRetryTemplate extends RetryTemplate {
 
 			@Override
 			def <T, E extends Throwable> void onError(RetryContext context, RetryCallback<T, E> callback, Throwable throwable) {
-				log.error("Exception occurred while trying to call presenting service", throwable)
+				log.error("Exception occurred while trying to send a message", throwable)
 			}
 		})
 	}

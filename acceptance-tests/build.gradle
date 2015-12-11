@@ -68,3 +68,7 @@ test {
         exceptionFormat = 'full'
     }
 }
+
+wrapper {
+    gradleVersion '2.9'
+}

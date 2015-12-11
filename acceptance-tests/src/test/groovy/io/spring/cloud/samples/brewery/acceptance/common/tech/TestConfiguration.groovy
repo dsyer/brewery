@@ -1,4 +1,4 @@
-package io.spring.cloud.samples.brewery.acceptance.common
+package io.spring.cloud.samples.brewery.acceptance.common.tech
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient

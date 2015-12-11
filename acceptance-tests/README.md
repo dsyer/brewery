@@ -49,11 +49,16 @@ the tests in a Docker container too) you can run the tests in a "local" mode.
 In addition to this you can provide a couple of more parameters:
 
 ```
-# will by default point to http://localhost:9991 to find the presenting service
--DLOCAL_MODE
+# will by default point to http://localhost to find the presenting service
+-DLOCAL
 ```
 
 ```
-# will point to the desired URL to find the presenting service (e.g. http://192.168.99.100:9991)
--DLOCAL_MODE_URL=http://192.168.99.100:9991
+# will point to the desired URL to find the presenting service (e.g. http://192.168.99.100)
+-DLOCAL_URL=http://192.168.99.100
+```
+
+```
+# will point to a custom Zipkin Query server
+-Dspring.zipkin.query.url=http://192.168.99.100:9411
 ```
