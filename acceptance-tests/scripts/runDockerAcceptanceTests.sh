@@ -55,7 +55,7 @@ cat gradle.properties
 
 # Build and run docker images
 ./gradlew clean build docker --parallel
-./dockerCompose-$WHAT_TO_TEST.sh
+./docker-compose-$WHAT_TO_TEST.sh
 
 # Wait for the apps to boot up
 url="http://127.0.0.1"
