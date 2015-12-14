@@ -43,7 +43,7 @@ If you don't want the acceptance tests to connect to a Zookeeper in a Docker con
 the tests in a Docker container too) you can run the tests in a "local" mode.
 
 ```
-./gradlew test -Dspring.profiles.active=local -DWHAT_TO_TEST=ZOOKEEPER
+./gradlew acceptance-tests:clean acceptance-tests:test -Dspring.profiles.active=local -DWHAT_TO_TEST=ZOOKEEPER
 ```
 
 In addition to this you can provide a couple of more parameters:

@@ -8,7 +8,8 @@ class TestConditions {
 	}
 
 	private static String getAndLogWhatToTestSystemProp() {
-		String whatToTestProp = System.getProperty(WhatToTest.WHAT_TO_TEST) ?: System.getenv(WhatToTest.WHAT_TO_TEST)
+		String whatToTestProp = System.getProperty(WhatToTest.WHAT_TO_TEST) ?:
+				System.getenv(WhatToTest.WHAT_TO_TEST)
 		println "WHAT_TO_TEST system prop equals [$whatToTestProp]"
 		return whatToTestProp
 	}

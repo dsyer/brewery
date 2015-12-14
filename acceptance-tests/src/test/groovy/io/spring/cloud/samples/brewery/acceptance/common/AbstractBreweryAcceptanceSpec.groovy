@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 package io.spring.cloud.samples.brewery.acceptance.common
+
 import groovy.json.JsonSlurper
 import groovy.util.logging.Slf4j
 import io.spring.cloud.samples.brewery.acceptance.common.sleuth.SleuthHashing
@@ -40,7 +41,7 @@ import spock.lang.Specification
 
 
 /**
- *  TODO: RestT
+ *  TODO: Split responsibilities
  */
 @ContextConfiguration(classes = TestConfiguration, loader = SpringApplicationContextLoader)
 @WebIntegrationTest(randomPort = true)
@@ -50,7 +51,7 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification implements Sl
 	public static final String TRACE_ID_HEADER_NAME = 'X-TRACE-ID'
 	public static final String SPAN_ID_HEADER_NAME = 'X-SPAN-ID'
 
-	ServiceUrlFetcher serviceUrlFetcher = new ServiceUrlFetcher()
+	@Autowired ServiceUrlFetcher serviceUrlFetcher
 	@Autowired(required = false) @LoadBalanced RestTemplate loadBalanced
 	@Value('${presenting.timeout:30}') Integer timeout
 	@Value('${LOCAL_URL:http://localhost}') String zipkinQueryUrl
@@ -94,15 +95,41 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification implements Sl
 	ResponseEntity<String> checkStateOfTheProcess(String processId) {
 		URI uri = URI.create("${serviceUrlFetcher.presentingServiceUrl()}/feed/process/$processId")
 		HttpHeaders headers = new HttpHeaders()
-		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
+		return new ExceptionLoggingRetryTemplate(timeout).execute(
+				new RetryCallback<ResponseEntity<String>, Exception>() {
+					@Override
+					ResponseEntity<String> doWithRetry(RetryContext retryContext) throws Exception {
+						return restTemplate().exchange(
+								new RequestEntity<>(headers, HttpMethod.GET, uri), String
+						)
+					}
+				}
+		)
 	}
 
 	ResponseEntity<String> checkStateOfTheTraceId(String traceId) {
 		String hexTraceId = convertToTraceIdZipkinRequest(traceId)
-		URI uri = URI.create("$zipkinQueryUrl:9411/api/v1/trace/$hexTraceId")
+		URI uri = URI.create("${wrapQueryWithProtocolIfPresent() ?: zipkinQueryUrl}:9411/api/v1/trace/$hexTraceId")
 		log.info("Performing a request for trace id [$traceId] and hex version [$hexTraceId]")
 		HttpHeaders headers = new HttpHeaders()
-		return restTemplate().exchange(new RequestEntity<>(headers, HttpMethod.GET, uri), String)
+		return new ExceptionLoggingRetryTemplate(timeout).execute(
+				new RetryCallback<ResponseEntity<String>, Exception>() {
+					@Override
+					ResponseEntity<String> doWithRetry(RetryContext retryContext) throws Exception {
+						return new ExceptionLoggingRestTemplate().exchange(
+								new RequestEntity<>(headers, HttpMethod.GET, uri), String
+						)
+					}
+				}
+		)
+	}
+
+	String wrapQueryWithProtocolIfPresent() {
+		String zipkinUrlFromEnvs = System.getenv('spring.zipkin.query.url')
+		if (zipkinUrlFromEnvs) {
+			return "http://$zipkinUrlFromEnvs"
+		}
+		return zipkinUrlFromEnvs
 	}
 
 	String stateFromJson(ResponseEntity<String> process) {
@@ -125,7 +152,7 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification implements Sl
 	}
 
 	ResponseEntity<String> presenting_service_has_been_called(RequestEntity requestEntity) {
-		new ExceptionLoggingRetryTemplate(timeout).execute(
+		return new ExceptionLoggingRetryTemplate(timeout).execute(
 				new RetryCallback<ResponseEntity<String>, Exception>() {
 					@Override
 					ResponseEntity<String> doWithRetry(RetryContext retryContext) throws Exception {
@@ -140,6 +167,10 @@ abstract class AbstractBreweryAcceptanceSpec extends Specification implements Sl
 	}
 
 	RestTemplate restTemplate() {
+		if (System.getProperty(ServiceUrlFetcher.LOCAL_MODE_PROP) ||
+				System.getProperty(ServiceUrlFetcher.LOCAL_MODE_URL_PROP)) {
+			return new ExceptionLoggingRestTemplate()
+		}
 		return loadBalanced ?: new ExceptionLoggingRestTemplate()
 	}
 
